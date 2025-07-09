@@ -22,7 +22,7 @@ except Exception as e:
     st.stop()
 
 # ✅ 3. 파일 업로드
-uploaded_file = st.file_uploader("📁 분석할 파일 업로드 (.py, .txt 등)", type=["py", "txt", "conf", "json", "yaml", "log"])
+uploaded_file = st.file_uploader("📁 분석할 파일 업로드 (.py, .js, .json, .yaml, .yml, .env, .cfg, .ini, .sh, .log, .txt 등)", type=["py", "txt", "conf", "json", "yaml", "log"])
 
 if uploaded_file:
     code = uploaded_file.read().decode("utf-8")
