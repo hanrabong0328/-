@@ -1,82 +1,75 @@
 import streamlit as st
+import openai  # OpenAI API 사용
 import pandas as pd
-import plotly.graph_objects as go
+import os
 
-# 타이틀
-st.title("🛡️ 정보 보안 위험도 분석 도구")
+st.set_page_config(page_title="AI 보안 분석기", layout="wide")
+st.title("🛡️ AI 기반 일반 파일 보안 분석기")
 
-# 1. 사용자 입력
-st.header("1. 보호 대상 정보 입력")
+# OpenAI 키 설정 (환경변수로 처리하거나 직접 입력 가능)
+openai.api_key = st.secrets.get("OPENAI_API_KEY", "sk-...")  # 실제로는 안전하게 보관하세요
 
-info_name = st.text_input("보호할 정보명 (예: 고객정보, 내부DB 등)", max_chars=50)
-importance = st.slider("정보 중요도 (1~5)", 1, 5, 3)
-exposure = st.slider("정보 노출도 (1~5)", 1, 5, 3)
-security_ready = st.slider("보안 대응 준비도 (1~5)", 1, 5, 3)
+# 1. 파일 업로드
+st.header("1. 분석할 파일 업로드")
+uploaded_file = st.file_uploader("🔽 .py, .txt, .env, .log 파일만 업로드 가능", type=["py", "txt", "env", "log"])
 
-# 2. 취약점 파일 업로드
-st.header("2. 취약점 CSV 파일 업로드")
-uploaded_file = st.file_uploader("CSV 파일을 업로드하세요 (컬럼: Vulnerability, Severity, Description)", type=["csv"])
+if uploaded_file:
+    file_content = uploaded_file.read().decode("utf-8", errors="ignore")
+    st.code(file_content[:1000], language="text")  # 미리보기
 
-avg_severity = 0
-vuln_df = None
+    # 2. AI 요청 생성
+    st.header("2. AI 보안 분석 결과")
 
-if uploaded_file is not None:
-    try:
-        vuln_df = pd.read_csv(uploaded_file)
+    with st.spinner("🔍 AI가 보안 분석 중입니다..."):
 
-        expected_cols = {'Vulnerability', 'Severity', 'Description'}
-        if not expected_cols.issubset(set(vuln_df.columns)):
-            st.error(f"❌ CSV 파일에 다음 컬럼이 모두 필요합니다: {expected_cols}")
+        prompt = f"""
+        너는 보안 전문가야. 아래 파일 내용을 분석해서 보안 취약점을 찾아줘.
+
+        요구사항:
+        1. 표 형식으로 최대 5개의 취약점을 출력해.
+        2. 각 항목은 ["취약점명", "심각도 (1~5)", "설명"] 형태로 정리해.
+        3. 실제 취약한 코드 줄이 있다면 간략히 인용해줘.
+
+        파일 내용:
+        {file_content[:3000]}  # 토큰 제한 때문에 일부만 사용
+        """
+
+        response = openai.ChatCompletion.create(
+            model="gpt-4",  # 또는 gpt-3.5-turbo
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2
+        )
+
+        analysis = response.choices[0].message.content
+        st.markdown("**📋 분석 요약:**")
+        st.markdown(analysis)
+
+        # 3. 표에서 내용 파싱 시도 (단순한 테이블 포맷 감지 시)
+        import re
+        table_pattern = r"\|(.+?)\|\n\|(.+?)\|\n((\|.+\|\n?)+)"
+        match = re.search(table_pattern, analysis, re.DOTALL)
+
+        if match:
+            rows = match.group(3).strip().split("\n")
+            records = [r.strip("|").split("|") for r in rows]
+            columns = [c.strip() for c in match.group(1).split("|")]
+            df = pd.DataFrame(records, columns=columns)
+
+            # 심각도 숫자화
+            if "심각도" in df.columns:
+                df["심각도"] = pd.to_numeric(df["심각도"], errors="coerce")
+                df["심각도"] = df["심각도"].fillna(0)
+
+            st.success("✅ 취약점 목록 분석 완료")
+            st.dataframe(df, use_container_width=True)
+
+            avg_risk = df["심각도"].mean()
+            if avg_risk >= 4:
+                st.error("⚠️ 보안 위험도가 매우 높습니다. 즉각 조치가 필요합니다.")
+            elif avg_risk >= 2.5:
+                st.warning("⚠️ 중간 수준 위험이 감지되었습니다. 점검이 필요합니다.")
+            else:
+                st.success("✅ 보안 위험이 낮은 수준으로 판단됩니다.")
+
         else:
-            st.success("✅ 취약점 파일 정상 업로드됨")
-            st.dataframe(vuln_df)
-
-            # 평균 심각도 계산
-            avg_severity = vuln_df['Severity'].mean()
-            st.markdown(f"📊 **평균 취약점 심각도**: `{avg_severity:.2f} / 5`")
-
-    except Exception as e:
-        st.error(f"파일 처리 중 오류 발생: {e}")
-
-# 3. 위험도 계산
-if security_ready > 0:
-    risk_score = (importance + exposure + avg_severity) / security_ready
-else:
-    risk_score = 10  # 대응 준비 0일 경우 최대 위험도
-
-risk_score_norm = min(max(risk_score, 1), 5)
-
-# 4. 시각화
-st.header("3. 보안 항목별 시각화")
-
-labels = ['정보 중요도', '정보 노출도', '보안 대응 준비도', '평균 취약점 심각도', '위험도 (계산값)']
-values = [importance, exposure, security_ready, round(avg_severity, 2), round(risk_score_norm, 2)]
-colors = ['blue', 'orange', 'green', 'purple', 'red']
-
-fig = go.Figure(data=[go.Bar(x=labels, y=values, marker_color=colors)])
-fig.update_layout(yaxis=dict(range=[0, 5]), title_text="보안 항목별 점수 (1~5)", template="plotly_white")
-
-st.plotly_chart(fig, use_container_width=True)
-
-# 5. 결과 요약
-st.header("4. 분석 결과 요약")
-
-st.markdown(f"- **보호할 정보명:** `{info_name if info_name else '미입력'}`")
-st.markdown(f"- **위험도 점수:** `{round(risk_score_norm, 2)} / 5`")
-
-# 취약점 목록 출력
-if vuln_df is not None:
-    st.markdown("### 📋 업로드된 취약점 목록:")
-    for i, row in vuln_df.iterrows():
-        st.markdown(f"- `{row['Vulnerability']}` (심각도: {row['Severity']}) - {row['Description']}")
-
-# 위험도 평가 메시지
-st.subheader("📢 보안 권고사항")
-if risk_score_norm >= 4:
-    st.error("⚠️ 위험도가 매우 높습니다. 즉각적인 보안 조치가 필요합니다!")
-elif risk_score_norm >= 3:
-    st.warning("⚠️ 보안 점검이 필요합니다. 대비 방안을 검토하세요.")
-else:
-    st.success("✅ 현재 보안 상태는 비교적 양호합니다.")
-
-st.info("※ 본 분석 도구는 참고용입니다. 실제 보안 진단은 보안 전문가와 상의하세요.")
+            st.warning("❗ AI 응답에서 테이블 형식을 찾을 수 없어 분석 표를 표시하지 못했습니다.")
