@@ -1,49 +1,59 @@
 import streamlit as st
 import google.generativeai as genai
-import os
 
-# 환경변수 또는 secrets에서 API 키 로드
-GOOGLE_API_KEY = st.secrets.get("AIzaSyCcZ2IQtrtDk8C_j1HwqXdxGmS8gwwq3gE", os.getenv("AIzaSyCcZ2IQtrtDk8C_j1HwqXdxGmS8gwwq3gE"))
+st.set_page_config(page_title="코드 보안 분석기 (Gemini)", layout="wide")
+st.title("🔐 AI 기반 코드 보안 분석기 (Gemini 2.5 Flash)")
 
-if not GOOGLE_API_KEY:
-    st.error("❌ Google Gemini API 키가 설정되지 않았습니다.")
+st.markdown("✅ 사용자의 **Gemini API 키**를 입력하고, 분석할 코드를 업로드하면 AI가 보안 취약점을 진단해줍니다.")
+
+# ✅ 1. 사용자로부터 API 키 받기
+user_api_key = st.text_input("🔑 Gemini API 키를 입력하세요", type="password")
+
+if not user_api_key:
+    st.info("먼저 Gemini API 키를 입력해주세요.")
     st.stop()
 
-genai.configure(api_key=AIzaSyCcZ2IQtrtDk8C_j1HwqXdxGmS8gwwq3gE)
+# ✅ 2. API 키 설정
+try:
+    genai.configure(api_key=user_api_key)
+    model = genai.GenerativeModel(model_name="gemini-2.5-flash")
+except Exception as e:
+    st.error("❌ API 키 인증에 실패했습니다. 유효한 키인지 확인해주세요.")
+    st.stop()
 
-# 모델 초기화
-model = genai.GenerativeModel("gemini-2.5-flash")
+# ✅ 3. 파일 업로드
+uploaded_file = st.file_uploader("📁 분석할 파일 업로드 (.py, .txt 등)", type=["py", "txt", "conf", "json", "yaml", "log"])
 
-st.title("🛡️ Gemini 기반 보안 취약점 자동 분석기")
+if uploaded_file:
+    code = uploaded_file.read().decode("utf-8")
 
-st.markdown("업로드된 구성 파일, 코드, 로그 파일에서 **잠재적인 보안 취약점**을 자동 분석합니다.")
+    st.subheader("📄 업로드된 코드 미리보기")
+    st.code(code, language='python')
 
-uploaded_file = st.file_uploader("🔐 분석할 파일을 업로드하세요 (예: .py, .txt)", type=['py', 'txt', 'log', 'conf'])
+    st.subheader("🔍 Gemini 기반 보안 분석 결과")
 
-if uploaded_file is not None:
-    file_content = uploaded_file.read().decode('utf-8', errors='ignore')
-
-    st.subheader("📄 업로드된 파일 내용")
-    st.code(file_content[:2000], language="plaintext")  # 2000자까지만 표시
-
-    with st.spinner("Gemini AI가 보안 분석 중입니다..."):
+    with st.spinner("Gemini가 코드를 분석 중입니다..."):
         prompt = f"""
-        다음은 사용자가 업로드한 구성 파일 또는 코드입니다.
-        이 코드에서 **보안 취약점**이나 **개선이 필요한 점**을 전문가처럼 상세히 분석하고 요약해 주세요.
-        가능하면 각 항목에 대해 보안 등급(낮음/중간/높음)도 포함해 주세요.
+        아래 코드는 설정파일 또는 보안 구성 코드입니다.
+        다음 항목을 기준으로 취약점을 찾아주세요:
 
-        파일 내용:
-        {file_content}
+        1. 하드코딩된 비밀번호/토큰/시크릿 키
+        2. 인증 없는 요청
+        3. 민감한 로그 출력
+        4. 위험한 시스템 명령 (rm -rf, chmod, etc.)
+        5. SSL 인증 검증 생략
+
+        출력 형식:
+        - 취약점 설명
+        - 예시 코드
+        - 개선 방법
+
+        분석 대상 코드:
+        {code}
         """
-
         try:
             response = model.generate_content(prompt)
-            result = response.text
             st.success("✅ 분석 완료!")
-            st.subheader("🔍 보안 취약점 분석 결과")
-            st.markdown(result)
+            st.markdown(response.text)
         except Exception as e:
-            st.error(f"❌ Gemini 응답 중 오류 발생: {e}")
-else:
-    st.info("👆 먼저 분석할 파일을 업로드하세요.")
-
+            st.error(f"❌ Gemini 분석 중 오류 발생: {e}")
