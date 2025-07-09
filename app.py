@@ -1,4 +1,5 @@
 import streamlit as st
+pip install openai
 import openai
 import pandas as pd
 import re
