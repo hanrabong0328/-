@@ -9,7 +9,7 @@ if not GOOGLE_API_KEY:
     st.error("❌ Google Gemini API 키가 설정되지 않았습니다.")
     st.stop()
 
-genai.configure(api_key=GOOGLE_API_KEY)
+genai.configure(api_key=AIzaSyCcZ2IQtrtDk8C_j1HwqXdxGmS8gwwq3gE)
 
 # 모델 초기화
 model = genai.GenerativeModel("gemini-pro")
