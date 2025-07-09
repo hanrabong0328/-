@@ -12,7 +12,7 @@ if not GOOGLE_API_KEY:
 genai.configure(api_key=AIzaSyCcZ2IQtrtDk8C_j1HwqXdxGmS8gwwq3gE)
 
 # 모델 초기화
-model = genai.GenerativeModel("gemini-pro")
+model = genai.GenerativeModel("gemini-2.5-flash")
 
 st.title("🛡️ Gemini 기반 보안 취약점 자동 분석기")
 
